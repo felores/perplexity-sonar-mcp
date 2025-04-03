@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -7,10 +9,36 @@ import cors from "cors";
 import { z } from "zod";
 import { perplexityChat } from "./perplexity.js";
 
+// Create a logger that won't corrupt the stdio channel
+function createLogger(isStdioMode: boolean) {
+  return {
+    log: (...args: unknown[]) => {
+      if (isStdioMode) {
+        console.error('[INFO]', ...args);
+      } else {
+        console.log(...args);
+      }
+    },
+    error: (...args: unknown[]) => {
+      console.error('[ERROR]', ...args);
+    },
+    warn: (...args: unknown[]) => {
+      console.error('[WARN]', ...args);
+    },
+    debug: (...args: unknown[]) => {
+      if (isStdioMode) {
+        console.error('[DEBUG]', ...args);
+      } else {
+        console.debug(...args);
+      }
+    }
+  };
+}
+
 // Create an MCP server
 const server = new McpServer({
   name: "Perplexity MCP",
-  version: "0.1.0"
+  version: "0.1.1"
 });
 
 // Register the perplexity-chat tool
@@ -51,41 +79,52 @@ server.tool(
 
 // Start the server
 export async function startServer() {
-  // Check if we're running under the inspector
-  const isInspector = process.argv.includes("--inspector") || 
-                     process.env.MCP_INSPECTOR || 
+  // Check if we're running under Claude Desktop or inspector
+  const isClaudeOrInspector = process.argv.includes("--inspector") || 
+                     process.argv.includes("--stdio") || 
+                     process.env.MCP_INSPECTOR === "true" || 
+                     !!process.env.MCP_INSPECTOR || 
                      process.argv.some(arg => arg.includes("--args=")) ||
-                     process.argv.includes("--stdio");
+                     process.argv.some(arg => arg.includes("inspector")) ||
+                     // Claude Desktop typically doesn't pass any special args
+                     (process.argv.length === 2 && !process.argv.includes("--port") && !process.argv.includes("-p"));
 
-  console.error("Starting with arguments:", process.argv);
-  console.error("Detected inspector:", isInspector ? "yes" : "no");
+  // Create a logger that won't corrupt stdio
+  const logger = createLogger(isClaudeOrInspector);
+  
+  logger.log("Starting with arguments:", process.argv);
+  logger.log("Environment variables:", {
+    MCP_INSPECTOR: process.env.MCP_INSPECTOR,
+    PORT: process.env.PORT
+  });
+  logger.log("Running in stdio mode:", isClaudeOrInspector ? "yes" : "no");
 
-  if (isInspector) {
-    // Use stdio transport for the inspector
+  if (isClaudeOrInspector) {
+    // Use stdio transport for Claude Desktop or inspector
     const transport = new StdioServerTransport();
     
     // Set up error handling
     process.on("uncaughtException", (error) => {
-      console.error("Uncaught exception:", error);
+      logger.error("Uncaught exception:", error);
     });
 
     process.on("unhandledRejection", (error) => {
-      console.error("Unhandled rejection:", error);
+      logger.error("Unhandled rejection:", error);
     });
 
     // Set up cleanup on exit
     process.on("SIGINT", async () => {
-      console.error("Shutting down...");
+      logger.log("Shutting down...");
       try {
         await server.close();
       } catch (error) {
-        console.error("Error during shutdown:", error);
+        logger.error("Error during shutdown:", error);
       }
       process.exit(0);
     });
 
     // Connect to the transport once
-    console.error("Starting Perplexity MCP server with stdio transport...");
+    logger.log("Starting Perplexity MCP server with stdio transport...");
     await server.connect(transport);
 
     // Keep the process running
@@ -111,7 +150,7 @@ export async function startServer() {
           await server.close();
           delete transports[transport.sessionId];
         } catch (error) {
-          console.error("Error cleaning up transport:", error);
+          logger.error("Error cleaning up transport:", error);
         }
       });
 
@@ -119,7 +158,7 @@ export async function startServer() {
         await transport.start();
         await server.connect(transport);
       } catch (error) {
-        console.error("Error establishing SSE connection:", error);
+        logger.error("Error establishing SSE connection:", error);
         res.status(500).send("Failed to establish SSE connection");
       }
     });
@@ -137,7 +176,7 @@ export async function startServer() {
       try {
         await transport.handlePostMessage(req, res);
       } catch (error) {
-        console.error("Error handling message:", error);
+        logger.error("Error handling message:", error);
         res.status(500).send("Failed to handle message");
       }
     });
@@ -145,7 +184,7 @@ export async function startServer() {
     // Start the HTTP server
     const PORT = process.env.PORT || 3000;
     const httpServer = app.listen(PORT, () => {
-      console.error(`Starting Perplexity MCP server on port ${PORT}...`);
+      logger.log(`Starting Perplexity MCP server on port ${PORT}...`);
     });
 
     // Clean up on server shutdown
@@ -155,7 +194,7 @@ export async function startServer() {
           Object.values(transports).map(transport => server.close())
         );
       } catch (error) {
-        console.error("Error during server shutdown:", error);
+        logger.error("Error during server shutdown:", error);
       }
     });
   }

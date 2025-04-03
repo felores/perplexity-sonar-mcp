@@ -108,7 +108,20 @@ ${citationLinks}
 function formatResponse(format: string, data: string): string {
   if (format === "markdown") {
     try {
-      const response = perplexityResponseSchema.parse(JSON.parse(data));
+      // Log the raw data for debugging
+      console.error("Raw API response:", data.substring(0, 200) + (data.length > 200 ? '...' : ''));
+      
+      // Check if data is valid JSON before parsing
+      let jsonData: unknown;
+      try {
+        jsonData = JSON.parse(data);
+      } catch (jsonError) {
+        console.error("Invalid JSON received from API:", jsonError);
+        return `Error: The API returned an invalid JSON response. Please try again with output_format set to "json" to see the raw response.\n\nPartial raw response: ${data.substring(0, 500)}`;
+      }
+      
+      // Validate against schema
+      const response = perplexityResponseSchema.parse(jsonData);
       return formatPerplexityResponse(response);
     } catch (err) {
       console.error("Error parsing Perplexity response:", err);
@@ -127,8 +140,23 @@ export async function perplexityChat(params: PerplexityChatInput) {
   // Get API key from environment
   const apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) {
+    console.error("Missing PERPLEXITY_API_KEY environment variable");
     return {
-      content: [{ type: "text", text: "Missing PERPLEXITY_API_KEY environment variable" }],
+      content: [{ 
+        type: "text", 
+        text: "Missing PERPLEXITY_API_KEY environment variable. If you're using Claude Desktop, add this to your claude_desktop_config.json file under the 'env' section. Example:\n\n" +
+              "{\n" +
+              "  \"mcpServers\": {\n" +
+              "    \"perplexity\": {\n" +
+              "      \"command\": \"node\",\n" +
+              "      \"args\": [\"/absolute/path/to/dist/index.js\"],\n" +
+              "      \"env\": {\n" +
+              "        \"PERPLEXITY_API_KEY\": \"your-api-key-here\"\n" +
+              "      }\n" +
+              "    }\n" +
+              "  }\n" +
+              "}" 
+      }],
       isError: true,
     };
   }
@@ -151,6 +179,8 @@ export async function perplexityChat(params: PerplexityChatInput) {
   };
 
   try {
+    console.error(`Making request to Perplexity API with model: ${params.model}`);
+    
     // Make the API request
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
       method: "POST",
@@ -164,14 +194,17 @@ export async function perplexityChat(params: PerplexityChatInput) {
     // Check if the request was successful
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`Perplexity API error (${response.status}): ${errorText}`);
       return {
-        content: [{ type: "text", text: `Perplexity API error: ${errorText}` }],
+        content: [{ type: "text", text: `Perplexity API error (${response.status}): ${errorText}` }],
         isError: true,
       };
     }
 
     // Parse and format the response
     const responseText = await response.text();
+    console.error(`Received response from Perplexity API (length: ${responseText.length} chars)`);
+    
     const formattedResponse = formatResponse(params.output_format, responseText);
 
     return {
