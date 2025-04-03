@@ -38,7 +38,7 @@ function createLogger(isStdioMode: boolean) {
 // Create an MCP server
 const server = new McpServer({
   name: "Perplexity MCP",
-  version: "0.1.1"
+  version: "0.1.2"
 });
 
 // Register the perplexity-chat tool
@@ -95,7 +95,8 @@ export async function startServer() {
   logger.log("Starting with arguments:", process.argv);
   logger.log("Environment variables:", {
     MCP_INSPECTOR: process.env.MCP_INSPECTOR,
-    PORT: process.env.PORT
+    PORT: process.env.PORT,
+    PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY ? "[REDACTED]" : undefined
   });
   logger.log("Running in stdio mode:", isClaudeOrInspector ? "yes" : "no");
 
@@ -103,18 +104,20 @@ export async function startServer() {
     // Use stdio transport for Claude Desktop or inspector
     const transport = new StdioServerTransport();
     
-    // Set up error handling
+    // Set up more comprehensive error handling
     process.on("uncaughtException", (error) => {
       logger.error("Uncaught exception:", error);
+      // Don't exit the process - this is crucial for Claude Desktop
     });
 
     process.on("unhandledRejection", (error) => {
       logger.error("Unhandled rejection:", error);
+      // Don't exit the process
     });
 
-    // Set up cleanup on exit
+    // Set up signal handlers
     process.on("SIGINT", async () => {
-      logger.log("Shutting down...");
+      logger.log("Received SIGINT, shutting down gracefully...");
       try {
         await server.close();
       } catch (error) {
@@ -123,12 +126,51 @@ export async function startServer() {
       process.exit(0);
     });
 
+    process.on("SIGTERM", async () => {
+      logger.log("Received SIGTERM, shutting down gracefully...");
+      try {
+        await server.close();
+      } catch (error) {
+        logger.error("Error during shutdown:", error);
+      }
+      process.exit(0);
+    });
+
+    // Additional event handlers to keep the process alive
+    process.on("exit", () => {
+      logger.log("Process exiting...");
+    });
+
+    // Prevent closing on stderr/stdin errors
+    process.stderr.on('error', (err) => {
+      logger.error('Stderr error (ignoring):', err);
+    });
+    
+    process.stdin.on('error', (err) => {
+      logger.error('Stdin error (ignoring):', err);
+    });
+
     // Connect to the transport once
     logger.log("Starting Perplexity MCP server with stdio transport...");
-    await server.connect(transport);
+    
+    try {
+      await server.connect(transport);
+      logger.log("Connected to transport successfully");
+    } catch (error) {
+      logger.error("Error connecting to transport:", error);
+      // Don't exit, as Claude Desktop may retry the connection
+    }
 
     // Keep the process running
+    logger.log("Keeping process alive with stdin.resume()");
     process.stdin.resume();
+    
+    // Set up an interval to keep the event loop active
+    setInterval(() => {
+      // This empty interval prevents Node.js from exiting when idle
+    }, 60000);
+    
+    logger.log("Server is ready to handle requests");
   } else {
     // Use Express with SSE for standalone mode
     const app = express();
@@ -204,6 +246,7 @@ export async function startServer() {
 if (import.meta.url === `file://${process.argv[1]}`) {
   startServer().catch(error => {
     console.error("Error starting server:", error);
-    process.exit(1);
+    // Don't exit - keep the process running even if there's an error during startup
+    console.error("Continuing to run despite startup error");
   });
 }
