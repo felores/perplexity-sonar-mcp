@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 (2025-04-03)
+
+### Fixes
+- Fixed critical issue with MCP server shutting down unexpectedly in Claude Desktop
+- Added robust process handling to prevent premature termination
+- Improved error logging and transport error handling
+- Added keepalive interval to maintain Node.js event loop
+- Better handling of stdin/stderr errors to prevent crashes
+
 ## 0.1.1 (2025-04-03)
 
 ### Improvements
