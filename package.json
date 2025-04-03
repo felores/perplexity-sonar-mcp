@@ -12,7 +12,7 @@
     }
   },
   "bin": {
-    "perplexity-mcp": "./dist/cli.js"
+    "perplexity-sonar-mcp": "./dist/index.js"
   },
   "files": [
     "dist",
@@ -36,7 +36,7 @@
     "ai",
     "llm"
   ],
-  "author": "",
+  "author": "felores",
   "private": false,
   "license": "MIT",
   "devDependencies": {
@@ -62,10 +62,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/perplexity-mcp.git"
+    "url": "git+https://github.com/felores/perplexity-sonar-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/perplexity-mcp/issues"
+    "url": "https://github.com/felores/perplexity-sonar-mcp/issues"
   },
-  "homepage": "https://github.com/yourusername/perplexity-mcp#readme"
+  "homepage": "https://github.com/felores/perplexity-sonar-mcp#readme"
 }

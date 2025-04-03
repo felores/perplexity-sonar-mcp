@@ -90,8 +90,8 @@ Parameters:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/perplexity-mcp.git
-   cd perplexity-mcp
+   git clone https://github.com/felores/perplexity-sonar-mcp.git
+   cd perplexity-sonar-mcp
    ```
 
 2. Install dependencies:
