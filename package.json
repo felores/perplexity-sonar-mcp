@@ -1,0 +1,71 @@
+{
+  "name": "@felores/perplexity-sonar-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Perplexity API integration with Claude Desktop and other MCP clients",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "perplexity-mcp": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "npx tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node --esm src/index.ts",
+    "format": "npx prettier --write \"src/**/*.{ts,tsx}\" --plugin=prettier-plugin-organize-imports",
+    "example": "ts-node --esm examples/mcp-client.ts",
+    "validate": "npm run build && ts-node --esm scripts/validate-server.ts",
+    "client": "npm run build && node dist/examples/mcp-client.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "perplexity",
+    "claude",
+    "ai",
+    "llm"
+  ],
+  "author": "",
+  "private": false,
+  "license": "MIT",
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/dotenv": "^6.1.1",
+    "@types/express": "^5.0.1",
+    "@types/node": "^20.11.24",
+    "dotenv": "^16.4.7",
+    "esbuild": "^0.19.6",
+    "prettier": "^3.3.2",
+    "prettier-plugin-organize-imports": "^4.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.8.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "zod": "^3.22.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/perplexity-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/perplexity-mcp/issues"
+  },
+  "homepage": "https://github.com/yourusername/perplexity-mcp#readme"
+}
