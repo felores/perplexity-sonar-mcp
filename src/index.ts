@@ -77,6 +77,49 @@ server.tool(
   }
 );
 
+let transportConnected = false; // Track if we've successfully connected to a transport
+
+// Set up signal handlers and process management outside the startServer function
+process.on("uncaughtException", (error) => {
+  console.error('[ERROR] Uncaught exception:', error);
+  // Don't exit the process - this is crucial for Claude Desktop
+});
+
+process.on("unhandledRejection", (error) => {
+  console.error('[ERROR] Unhandled rejection:', error);
+  // Don't exit the process
+});
+
+// Set up signal handlers
+process.on("SIGINT", async () => {
+  console.error('[INFO] Received SIGINT, shutting down gracefully...');
+  try {
+    await server.close();
+  } catch (error) {
+    console.error('[ERROR] Error during shutdown:', error);
+  }
+  // Don't exit immediately, let Node handle it gracefully
+});
+
+process.on("SIGTERM", async () => {
+  console.error('[INFO] Received SIGTERM, shutting down gracefully...');
+  try {
+    await server.close();
+  } catch (error) {
+    console.error('[ERROR] Error during shutdown:', error);
+  }
+  // Don't exit immediately, let Node handle it gracefully
+});
+
+// Prevent closing on stderr/stdin errors
+process.stderr.on('error', (err) => {
+  console.error('[ERROR] Stderr error (ignoring):', err);
+});
+
+process.stdin.on('error', (err) => {
+  console.error('[ERROR] Stdin error (ignoring):', err);
+});
+
 // Start the server
 export async function startServer() {
   // Check if we're running under Claude Desktop or inspector
@@ -104,71 +147,37 @@ export async function startServer() {
     // Use stdio transport for Claude Desktop or inspector
     const transport = new StdioServerTransport();
     
-    // Set up more comprehensive error handling
-    process.on("uncaughtException", (error) => {
-      logger.error("Uncaught exception:", error);
-      // Don't exit the process - this is crucial for Claude Desktop
-    });
-
-    process.on("unhandledRejection", (error) => {
-      logger.error("Unhandled rejection:", error);
-      // Don't exit the process
-    });
-
-    // Set up signal handlers
-    process.on("SIGINT", async () => {
-      logger.log("Received SIGINT, shutting down gracefully...");
-      try {
-        await server.close();
-      } catch (error) {
-        logger.error("Error during shutdown:", error);
-      }
-      process.exit(0);
-    });
-
-    process.on("SIGTERM", async () => {
-      logger.log("Received SIGTERM, shutting down gracefully...");
-      try {
-        await server.close();
-      } catch (error) {
-        logger.error("Error during shutdown:", error);
-      }
-      process.exit(0);
-    });
-
-    // Additional event handlers to keep the process alive
-    process.on("exit", () => {
-      logger.log("Process exiting...");
-    });
-
-    // Prevent closing on stderr/stdin errors
-    process.stderr.on('error', (err) => {
-      logger.error('Stderr error (ignoring):', err);
-    });
+    // Keep the process running by keeping stdin open
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
     
-    process.stdin.on('error', (err) => {
-      logger.error('Stdin error (ignoring):', err);
-    });
-
     // Connect to the transport once
     logger.log("Starting Perplexity MCP server with stdio transport...");
     
     try {
       await server.connect(transport);
+      transportConnected = true;
       logger.log("Connected to transport successfully");
     } catch (error) {
       logger.error("Error connecting to transport:", error);
       // Don't exit, as Claude Desktop may retry the connection
     }
 
-    // Keep the process running
-    logger.log("Keeping process alive with stdin.resume()");
-    process.stdin.resume();
+    // Keep the process running with two redundant mechanisms
     
-    // Set up an interval to keep the event loop active
-    setInterval(() => {
-      // This empty interval prevents Node.js from exiting when idle
-    }, 60000);
+    // 1. This setInterval keeps the Node.js event loop active
+    const keepAliveInterval = setInterval(() => {
+      logger.debug("Keepalive heartbeat");
+    }, 30000); // Every 30 seconds
+    
+    // Make sure the interval itself doesn't keep Node.js from exiting when it should
+    keepAliveInterval.unref();
+    
+    // 2. This stdin listener keeps the process from exiting
+    const stdinListener = () => {
+      // Just having this listener is enough
+    };
+    process.stdin.on('data', stdinListener);
     
     logger.log("Server is ready to handle requests");
   } else {
@@ -199,6 +208,7 @@ export async function startServer() {
       try {
         await transport.start();
         await server.connect(transport);
+        transportConnected = true;
       } catch (error) {
         logger.error("Error establishing SSE connection:", error);
         res.status(500).send("Failed to establish SSE connection");
@@ -245,8 +255,11 @@ export async function startServer() {
 // Only start the server if this file is being run directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   startServer().catch(error => {
-    console.error("Error starting server:", error);
+    console.error("[ERROR] Error starting server:", error);
     // Don't exit - keep the process running even if there's an error during startup
-    console.error("Continuing to run despite startup error");
+    console.error("[ERROR] Continuing to run despite startup error");
+    
+    // Ensure we keep the process alive even after startup errors
+    process.stdin.resume();
   });
 }
